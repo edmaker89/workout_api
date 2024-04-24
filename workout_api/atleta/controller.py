@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 from fastapi import APIRouter, Body, HTTPException, status
+from fastapi_pagination import Page, paginate
 from sqlalchemy import select
 from pydantic import UUID4
 from workout_api.atleta.models import AtletaModel
@@ -55,57 +56,38 @@ async def post(db_session: DatabaseDependency,
 
 @router.get('/', summary='Constular todos os Atletas', 
              status_code=status.HTTP_200_OK,
-             response_model=list[AtletaOut],
+             response_model=Page[AtletaDetailOut],
              )
-async def query(db_session: DatabaseDependency ) -> list[AtletaOut]:
-    atletas: list[AtletaOut] = (await db_session.execute(select(AtletaModel))).scalars().all()
-    
-    response = [AtletaOut.model_validate(atleta) for atleta in atletas]
-    
-    return response
-
-@router.get('/', summary='Consultar todos os atletas com informações detalhadas', 
-             status_code=status.HTTP_200_OK,
-             response_model=list[AtletaDetailOut],
-             )
-async def query_all_custom(db_session: DatabaseDependency) -> list[AtletaDetailOut]:
-    atletas: list[AtletaOut] = (await db_session.execute(select(AtletaModel))).scalars().all()
-    
-    response = [AtletaDetailOut(
-                    nome=atleta.nome,
-                    cpf=atleta.cpf,
-                    idade=atleta.idade,
-                    peso=atleta.peso,
-                    altura=atleta.altura,
-                    sexo=atleta.sexo,
-                    centro_treinamento=atleta.centro_treinamento.nome if atleta.centro_treinamento else None,
-                    categoria=atleta.categoria.nome if atleta.categoria else None,
-                ) 
-                for atleta in atletas]
-    
-    return response
-
-
-@router.get('/query', summary='Constular todos os Atletas', 
-             status_code=status.HTTP_200_OK,
-             response_model=list[AtletaOut],
-             )
-async def query_atleta_by_name_or_cpf(db_session: DatabaseDependency, nome:str=None, cpf:str=None) -> list[AtletaOut]:
+async def query_all_custom(db_session: DatabaseDependency, nome: str=None, cpf: str=None) -> Page[AtletaDetailOut]:
     query_filters = []
     
     if nome:
         query_filters.append(AtletaModel.nome.ilike(f"%{nome}%"))
     if cpf:
         query_filters.append(AtletaModel.cpf == cpf)
+    atletas: list[AtletaModel] = (await db_session.execute(select(AtletaModel).filter(*query_filters))).scalars().all()
+    
+    response = []
+    for atleta in atletas:
+        centro_treinamento = atleta.centros_treinamento.nome if atleta.centros_treinamento else None
+        categoria = atleta.categoria.nome if atleta.categoria else None
         
-    if not query_filters:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="É necessário fornecer pelo menos um parâmetro de consulta (nome ou CPF).")
-    
-    atletas: list[AtletaOut] = (await db_session.execute(select(AtletaModel).filter(*query_filters))).scalars().all()
-    
-    response = [AtletaOut.model_validate(atleta) for atleta in atletas]
-    
-    return response
+        print(categoria, centro_treinamento)
+        
+        atleta_detail = AtletaDetailOut(
+            id=atleta.id,
+            created_at=atleta.created_at,
+            nome=atleta.nome,
+            cpf=atleta.cpf,
+            idade=atleta.idade,
+            peso=atleta.peso,
+            altura=atleta.altura,
+            sexo=atleta.sexo,
+            categoria=categoria,
+            centros_treinamento=centro_treinamento,
+        )
+        response.append(atleta_detail)
+    return paginate(response)
 
 @router.get('/{id}', summary='Constular uma atletas pelo id', 
              status_code=status.HTTP_200_OK,
