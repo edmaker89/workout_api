@@ -25,3 +25,7 @@ class AtletaUpdate(BaseSchema):
     nome: Annotated[Optional[str], Field(None, description='Nome do atleta', examples=['Joao'], max_length=50)]
     cpf: Annotated[Optional[str], Field(None, description='CPF do atleta', examples=['12345678900'], max_length=11)]
     idade: Annotated[Optional[int], Field(None, description='Iddade do atleta', examples=[25])]
+    
+class AtletaDetailOut(AtletaOut):
+    centros_treinamento: Annotated[Optional[str], Field(None, description='Centro de Treinamento do atleta')]
+    categoria: Annotated[Optional[str], Field(None, description='Categoria do atleta')]

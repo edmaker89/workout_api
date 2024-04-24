@@ -7,7 +7,8 @@ from workout_api.atleta.models import AtletaModel
 from workout_api.categorias.model import CategoriaModel
 from workout_api.centro_treinamento.model import CentroTreinamentoModel
 from workout_api.contrib.dependencies import DatabaseDependency
-from workout_api.atleta.schemas import AtletaIn, AtletaOut, AtletaUpdate
+from workout_api.atleta.schemas import AtletaDetailOut, AtletaIn, AtletaOut, AtletaUpdate
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
 
@@ -36,15 +37,20 @@ async def post(db_session: DatabaseDependency,
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f'O centro de treinamento, {centro_treinamento_name}, não foi encontrado'
         )
-    
-    atleta_out = AtletaOut(id=uuid4(), created_at=datetime.now() ,**atleta_in.model_dump())
-    atleta_model = AtletaModel(**atleta_out.model_dump(exclude={'categoria', 'centros_treinamento'}))
-    atleta_model.categoria_id = categoria.pk_id
-    atleta_model.centro_treinamento_id = centro_treinamento.pk_id
-    
-    db_session.add(atleta_model)
-    await db_session.commit()
-    
+    try:
+        atleta_out = AtletaOut(id=uuid4(), created_at=datetime.now() ,**atleta_in.model_dump())
+        atleta_model = AtletaModel(**atleta_out.model_dump(exclude={'categoria', 'centros_treinamento'}))
+        atleta_model.categoria_id = categoria.pk_id
+        atleta_model.centro_treinamento_id = centro_treinamento.pk_id
+
+        db_session.add(atleta_model)
+        await db_session.commit()
+    except IntegrityError as e:
+        await db_session.rollback()
+        if "UNIQUE constraint failed" in str(e):
+            raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, detail=f"Já existe um atleta cadastrado com o cpf: {atleta_in.cpf}")
+        else:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erro de integridade de dados no banco de dados")
     return atleta_out
 
 @router.get('/', summary='Constular todos os Atletas', 
@@ -53,6 +59,49 @@ async def post(db_session: DatabaseDependency,
              )
 async def query(db_session: DatabaseDependency ) -> list[AtletaOut]:
     atletas: list[AtletaOut] = (await db_session.execute(select(AtletaModel))).scalars().all()
+    
+    response = [AtletaOut.model_validate(atleta) for atleta in atletas]
+    
+    return response
+
+@router.get('/', summary='Consultar todos os atletas com informações detalhadas', 
+             status_code=status.HTTP_200_OK,
+             response_model=list[AtletaDetailOut],
+             )
+async def query_all_custom(db_session: DatabaseDependency) -> list[AtletaDetailOut]:
+    atletas: list[AtletaOut] = (await db_session.execute(select(AtletaModel))).scalars().all()
+    
+    response = [AtletaDetailOut(
+                    nome=atleta.nome,
+                    cpf=atleta.cpf,
+                    idade=atleta.idade,
+                    peso=atleta.peso,
+                    altura=atleta.altura,
+                    sexo=atleta.sexo,
+                    centro_treinamento=atleta.centro_treinamento.nome if atleta.centro_treinamento else None,
+                    categoria=atleta.categoria.nome if atleta.categoria else None,
+                ) 
+                for atleta in atletas]
+    
+    return response
+
+
+@router.get('/query', summary='Constular todos os Atletas', 
+             status_code=status.HTTP_200_OK,
+             response_model=list[AtletaOut],
+             )
+async def query_atleta_by_name_or_cpf(db_session: DatabaseDependency, nome:str=None, cpf:str=None) -> list[AtletaOut]:
+    query_filters = []
+    
+    if nome:
+        query_filters.append(AtletaModel.nome.ilike(f"%{nome}%"))
+    if cpf:
+        query_filters.append(AtletaModel.cpf == cpf)
+        
+    if not query_filters:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="É necessário fornecer pelo menos um parâmetro de consulta (nome ou CPF).")
+    
+    atletas: list[AtletaOut] = (await db_session.execute(select(AtletaModel).filter(*query_filters))).scalars().all()
     
     response = [AtletaOut.model_validate(atleta) for atleta in atletas]
     
@@ -69,6 +118,7 @@ async def query(id:UUID4 ,db_session: DatabaseDependency) -> AtletaOut:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Atleta não encontrada no id: {id}')
     
     return AtletaOut.model_validate(atleta)
+
 
 @router.patch('/{id}', summary='Editar uma atletas pelo id', 
              status_code=status.HTTP_200_OK,
