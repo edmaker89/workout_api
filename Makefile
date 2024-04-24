@@ -5,7 +5,8 @@ req:
 	@pip freeze > requirements.txt
 
 create-migrations:
-	@PYTHONPATH=$PYTHONPATH:$(pwd) alembic revision --autogenerate -m &(d)
+	@set PYTHONPATH=%cd% && alembic revision --autogenerate -m "Descrição_da_migração"
 
 run-migrations:
-	@PYTHONPATH=$PYTHONPATH:$(pwd) alembic upgrade head 
+	@set PYTHONPATH=%cd% && alembic upgrade head
+
