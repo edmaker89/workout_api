@@ -40,7 +40,7 @@ async def post(db_session: DatabaseDependency,
     atleta_out = AtletaOut(id=uuid4(), created_at=datetime.now() ,**atleta_in.model_dump())
     atleta_model = AtletaModel(**atleta_out.model_dump(exclude={'categoria', 'centros_treinamento'}))
     atleta_model.categoria_id = categoria.pk_id
-    atleta_model.centros_treinamento_id = centro_treinamento.pk_id
+    atleta_model.centro_treinamento_id = centro_treinamento.pk_id
     
     db_session.add(atleta_model)
     await db_session.commit()
