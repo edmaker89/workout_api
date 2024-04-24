@@ -2,12 +2,12 @@ from datetime import datetime
 from uuid import uuid4
 from fastapi import APIRouter, Body, HTTPException, status
 from sqlalchemy import select
-
+from pydantic import UUID4
 from workout_api.atleta.models import AtletaModel
 from workout_api.categorias.model import CategoriaModel
 from workout_api.centro_treinamento.model import CentroTreinamentoModel
 from workout_api.contrib.dependencies import DatabaseDependency
-from workout_api.atleta.schemas import AtletaIn, AtletaOut
+from workout_api.atleta.schemas import AtletaIn, AtletaOut, AtletaUpdate
 
 router = APIRouter()
 
@@ -46,3 +46,58 @@ async def post(db_session: DatabaseDependency,
     await db_session.commit()
     
     return atleta_out
+
+@router.get('/', summary='Constular todos os Atletas', 
+             status_code=status.HTTP_200_OK,
+             response_model=list[AtletaOut],
+             )
+async def query(db_session: DatabaseDependency ) -> list[AtletaOut]:
+    atletas: list[AtletaOut] = (await db_session.execute(select(AtletaModel))).scalars().all()
+    
+    response = [AtletaOut.model_validate(atleta) for atleta in atletas]
+    
+    return response
+
+@router.get('/{id}', summary='Constular uma atletas pelo id', 
+             status_code=status.HTTP_200_OK,
+             response_model=AtletaOut,
+             )
+async def query(id:UUID4 ,db_session: DatabaseDependency) -> AtletaOut:
+    atleta: AtletaOut = (await db_session.execute(select(AtletaModel).filter_by(id=id))).scalars().first()
+    
+    if not atleta:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Atleta não encontrada no id: {id}')
+    
+    return AtletaOut.model_validate(atleta)
+
+@router.patch('/{id}', summary='Editar uma atletas pelo id', 
+             status_code=status.HTTP_200_OK,
+             response_model=AtletaOut,
+             )
+async def query(id:UUID4 ,db_session: DatabaseDependency, atleta_up: AtletaUpdate = Body(...)) -> AtletaOut:
+    print(atleta_up)
+    atleta: AtletaOut = (await db_session.execute(select(AtletaModel).filter_by(id=id))).scalars().first()
+    
+    if not atleta:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Atleta não encontrada no id: {id}')
+    
+    atleta_update = atleta_up.model_dump(exclude_unset=True)
+    for key, value in atleta_update.items():
+        setattr(atleta, key, value)
+        
+    await db_session.commit()
+    await db_session.refresh(atleta)
+    
+    return atleta
+
+@router.delete('/{id}', summary='Deletar uma atletas pelo id', 
+             status_code=status.HTTP_204_NO_CONTENT,
+             )
+async def delete(id:UUID4 ,db_session: DatabaseDependency) -> None:
+    atleta: AtletaOut = (await db_session.execute(select(AtletaModel).filter_by(id=id))).scalars().first()
+    
+    if not atleta:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Atleta não encontrada no id: {id}')
+    
+    await db_session.delete(atleta)
+    await db_session.commit()
