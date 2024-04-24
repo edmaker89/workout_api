@@ -2,5 +2,8 @@
 venv
 */venv
 *.pyc
+__pycache__
+/__pycache__
+__pycache__/*
 __init__.cpython-312.pyc
 __init__.cpython-312
